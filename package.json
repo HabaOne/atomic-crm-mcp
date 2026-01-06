@@ -1,0 +1,35 @@
+{
+  "name": "atomic-crm-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marmelab/atomic-crm-mcp.git"
+  },
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "MCP Server with Supabase OAuth for CRM data access",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "jose": "^5.10.0",
+    "pg": "^8.16.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^20.19.27",
+    "@types/pg": "^8.16.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
