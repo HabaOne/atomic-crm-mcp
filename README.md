@@ -14,6 +14,11 @@ An MCP (Model Context Protocol) server for [Atomic CRM](https://marmelab.com/ato
 - Claude Desktop
 - Claude Code
 - Claude Mobile
+- Cursor
+- Goose
+- Codex CLI
+- Gemini CLI
+- ~~Gemini Mobile~~
 - ~~ChatGPT Desktop~~
 - ~~ChatGPT Mobile~~
 
