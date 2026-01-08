@@ -1,6 +1,6 @@
 # Atomic CRM MCP Server
 
-An MCP (Model Context Protocol) server for [Atomic CRM](https://marmelab.com/atomic-crm/). It enables an agent (e.g. Claude Desktop) to read and write data to your Atomic CRM instance securely.
+An MCP (Model Context Protocol) server for [Atomic CRM](https://marmelab.com/atomic-crm/). It enables an agent (e.g. ChatGPT, Claude, etc.) to read and write data to your Atomic CRM instance securely.
 
 ![./assets/screenshot.png](./assets/screenshot.png)
 
@@ -11,10 +11,10 @@ An MCP (Model Context Protocol) server for [Atomic CRM](https://marmelab.com/ato
 ## Supported MCP Clients
 
 - [ChatGPT](#adding-the-mcp-server-to-chat-gpt)
+- [Claude.ai](#adding-the-mcp-server-to-claudeai)
 - [Visual Studio Code](#adding-the-mcp-server-to-visual-studio-code)
 - [Claude Desktop](#adding-the-mcp-server-to-claude-desktop)
 - [Claude Code](#adding-the-mcp-server-to-claude-code)
-- [Claude Mobile](#adding-the-mcp-server-to-claude-desktop)
 - Cursor
 - Goose
 - Codex CLI
@@ -98,6 +98,8 @@ Note that the host must support IPV6, as Supabase Direct Database connection doe
 
 ### Adding the MCP server to Chat GPT
 
+Note: Atomic CRM MCP works both on the web and mobile versions of ChatGPT. You need a paid Chat GPT account to use custom connectors.
+
 1. Enable the [Developer Mode](https://platform.openai.com/docs/guides/developer-mode) in [Settings → Apps → Advanced](https://chatgpt.com/apps#settings/Connectors/Advanced) settings
 2. Then, under [Settings → Apps](https://chatgpt.com/apps#settings/Connectors), click on the Create button
 3. Fill in the fields as follows:
@@ -106,6 +108,19 @@ Note that the host must support IPV6, as Supabase Direct Database connection doe
     - Authentication: OAuth
     - Check the "I understand and want to continue" checkbox
 4. Click "Create"
+5. A browser window opens for you to authenticate to Atomic CRM and allow access to Claude Code.
+6. Once authenticated, you can start using the Atomic CRM extension in Chat GPT
+
+### Adding the MCP server to Claude.ai
+
+Note: Atomic CRM MCP works both on the web and mobile versions of Claude.You need a paid Claude.ai account to use custom connectors.
+
+1. Open Claude.ai and open the [Settings → Connectors](https://claude.ai/settings/connectors) page
+2. Then click on "Add custom connector"
+3. Fill in the fields as follows:
+    - Name: Atomic CRM
+    - MCP Server URL: (your MCP Server URL, e.g., `MCP_URL/mcp`)
+4. Click "Add"
 5. A browser window opens for you to authenticate to Atomic CRM and allow access to Claude Code.
 6. Once authenticated, you can start using the Atomic CRM extension in Chat GPT
 
