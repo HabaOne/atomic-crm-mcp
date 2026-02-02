@@ -1,0 +1,22 @@
+services:
+  mcp:
+    image: ${DOCKER_IMAGE}
+    container_name: atomic-crm-mcp
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MCP_SERVER_URL=${MCP_SERVER_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/.well-known/oauth-protected-resource"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    driver: bridge

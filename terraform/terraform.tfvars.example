@@ -1,0 +1,19 @@
+# Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your values
+
+# Required
+hcloud_token = "your-hetzner-cloud-api-token"
+ssh_key_name = "your-ssh-key-name"
+
+# Optional (with defaults)
+environment        = "dev"
+location           = "nbg1"
+server_type        = "cx22"
+load_balancer_type = "lb11"
+
+# SSL Certificate (leave empty for HTTP-only)
+# Create a managed certificate in Hetzner Cloud Console first
+certificate_name = ""
+
+# Docker image (will be set by CI/CD)
+docker_image = "ghcr.io/habaone/atomic-crm-mcp:latest"

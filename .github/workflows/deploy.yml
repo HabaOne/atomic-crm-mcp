@@ -1,0 +1,357 @@
+name: Build and Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: habaone/atomic-crm-mcp
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: prod
+      url: https://crm-mcp.haba.services
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: ./terraform
+
+      - name: Verify Secrets
+        run: |
+          echo "Checking secrets..."
+          if [ -z "${{ secrets.HCLOUD_TOKEN }}" ]; then
+            echo "HCLOUD_TOKEN is not set"
+            exit 1
+          else
+            echo "HCLOUD_TOKEN is set"
+          fi
+          if [ -z "${{ vars.HCLOUD_SSH_KEY_NAME }}" ]; then
+            echo "HCLOUD_SSH_KEY_NAME is not set"
+            exit 1
+          else
+            echo "HCLOUD_SSH_KEY_NAME is set"
+          fi
+          if [ -z "${{ secrets.HETZNER_OBJECT_STORAGE_ACCESS_KEY }}" ]; then
+            echo "HETZNER_OBJECT_STORAGE_ACCESS_KEY is not set"
+            exit 1
+          else
+            echo "HETZNER_OBJECT_STORAGE_ACCESS_KEY is set"
+          fi
+          if [ -z "${{ secrets.HETZNER_OBJECT_STORAGE_SECRET_KEY }}" ]; then
+            echo "HETZNER_OBJECT_STORAGE_SECRET_KEY is not set"
+            exit 1
+          else
+            echo "HETZNER_OBJECT_STORAGE_SECRET_KEY is set"
+          fi
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "SSH_PRIVATE_KEY is not set"
+            exit 1
+          else
+            echo "SSH_PRIVATE_KEY is set"
+          fi
+          if [ -z "${{ secrets.SUPABASE_URL }}" ]; then
+            echo "SUPABASE_URL is not set"
+            exit 1
+          else
+            echo "SUPABASE_URL is set"
+          fi
+          if [ -z "${{ secrets.DATABASE_URL }}" ]; then
+            echo "DATABASE_URL is not set"
+            exit 1
+          else
+            echo "DATABASE_URL is set"
+          fi
+          if [ -z "${{ vars.MCP_SERVER_URL }}" ]; then
+            echo "MCP_SERVER_URL is not set"
+            exit 1
+          else
+            echo "MCP_SERVER_URL is set"
+          fi
+
+      - name: Create Terraform Backend Config
+        run: |
+          if [ -z "${{ vars.HETZNER_OBJECT_STORAGE_BUCKET }}" ]; then
+            echo "ERROR: HETZNER_OBJECT_STORAGE_BUCKET variable is not set"
+            exit 1
+          fi
+          cat > backend.tfvars << EOF
+          bucket     = "${{ vars.HETZNER_OBJECT_STORAGE_BUCKET }}"
+          key        = "atomic-crm-mcp/prod/terraform.tfstate"
+          region     = "eu-central-1"
+          access_key = "${{ secrets.HETZNER_OBJECT_STORAGE_ACCESS_KEY }}"
+          secret_key = "${{ secrets.HETZNER_OBJECT_STORAGE_SECRET_KEY }}"
+          EOF
+          echo "Production backend config file created"
+          echo "State file: atomic-crm-mcp/prod/terraform.tfstate"
+        working-directory: ./terraform
+
+      - name: Replace Endpoint Placeholder in main.tf
+        run: |
+          if [ -z "${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}" ]; then
+            echo "ERROR: HETZNER_OBJECT_STORAGE_ENDPOINT variable is not set"
+            exit 1
+          fi
+          sed -i.bak "s|PLACEHOLDER_ENDPOINT_URL|${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}|g" main.tf
+          echo "Endpoint URL replaced in main.tf"
+          if grep -q "PLACEHOLDER_ENDPOINT_URL" main.tf; then
+            echo "ERROR: Endpoint placeholder was not replaced"
+            exit 1
+          fi
+        working-directory: ./terraform
+
+      - name: Terraform Init
+        run: |
+          export AWS_ACCESS_KEY_ID="${{ secrets.HETZNER_OBJECT_STORAGE_ACCESS_KEY }}"
+          export AWS_SECRET_ACCESS_KEY="${{ secrets.HETZNER_OBJECT_STORAGE_SECRET_KEY }}"
+          export AWS_ENDPOINT_URL_S3="${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}"
+          export AWS_SKIP_REQUESTING_ACCOUNT_ID="true"
+          export AWS_EC2_METADATA_DISABLED="true"
+          export AWS_STS_REGIONAL_ENDPOINTS="legacy"
+          export AWS_REGION="eu-central-1"
+          export AWS_DEFAULT_REGION="eu-central-1"
+          export AWS_SDK_LOAD_CONFIG="false"
+
+          terraform init -reconfigure -backend-config=backend.tfvars
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_OBJECT_STORAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_OBJECT_STORAGE_SECRET_KEY }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+          AWS_REGION: "eu-central-1"
+          AWS_DEFAULT_REGION: "eu-central-1"
+          AWS_SDK_LOAD_CONFIG: "false"
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          TF_VAR_docker_image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+
+      - name: Terraform Apply
+        if: github.event_name != 'pull_request'
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          TF_VAR_docker_image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+
+      - name: Get Terraform Outputs
+        if: github.event_name != 'pull_request'
+        run: terraform output -json > terraform_outputs.json
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          TF_VAR_docker_image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+
+      - name: Display Outputs
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Production environment deployed"
+          echo "================================"
+          echo "Server IP: $(terraform output -raw server_public_ip)"
+          echo "Load Balancer IP: $(terraform output -raw load_balancer_ip)"
+          echo "Environment: PRODUCTION"
+          echo "Domain: crm-mcp.haba.services"
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          TF_VAR_docker_image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
+
+      - name: Deploy Application to Production Server
+        if: github.event_name != 'pull_request'
+        run: |
+          SERVER_IP=$(terraform output -raw server_public_ip)
+          echo "Deploying to PRODUCTION server: $SERVER_IP"
+
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          echo "Waiting for server to be ready..."
+          for i in {1..30}; do
+            if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$SERVER_IP "echo 'Server is ready'" 2>/dev/null; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 10
+          done
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP "mkdir -p /opt/atomic-crm-mcp"
+
+          echo "Copying docker-compose.prod.yml to server..."
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ../docker-compose.prod.yml root@$SERVER_IP:/opt/atomic-crm-mcp/docker-compose.yml
+
+          cat > /tmp/deploy.env << EOF
+          DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          ENVIRONMENT=production
+          PORT=3000
+          MCP_SERVER_URL=${{ vars.MCP_SERVER_URL }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          EOF
+
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no /tmp/deploy.env root@$SERVER_IP:/opt/atomic-crm-mcp/.env
+          rm -f /tmp/deploy.env
+
+          echo ".env file created and copied to production server"
+
+          echo "Authenticating with GitHub Container Registry..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << EOF
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin || true
+          EOF
+
+          echo "Pulling production images and starting containers..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << 'REMOTEEOF'
+          cd /opt/atomic-crm-mcp
+
+          echo "Current directory: $(pwd)"
+          echo "docker-compose.yml exists: $(test -f docker-compose.yml && echo 'yes' || echo 'no')"
+          echo ".env exists: $(test -f .env && echo 'yes' || echo 'no')"
+
+          echo "Pulling production images..."
+          docker compose pull || true
+
+          echo "Stopping existing containers..."
+          docker compose down || true
+
+          echo "Starting production containers..."
+          docker compose up -d
+
+          echo "Waiting for containers to start..."
+          sleep 15
+
+          echo "Container status:"
+          docker compose ps
+
+          echo "Checking application health..."
+          if curl -f http://localhost:3000/.well-known/oauth-protected-resource > /dev/null 2>&1; then
+            echo "Production application is healthy"
+          else
+            echo "Application health check failed, checking logs..."
+            docker compose logs --tail=50
+            echo "Production deployment failed: Application is not healthy"
+            exit 1
+          fi
+          REMOTEEOF
+
+          echo "PRODUCTION deployment completed!"
+          echo "================================"
+          echo "Environment: PRODUCTION"
+          echo "Server IP: $SERVER_IP"
+          echo "Domain: crm-mcp.haba.services"
+        working-directory: ./terraform
+        env:
+          TF_VAR_environment: prod
+          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          TF_VAR_ssh_key_name: ${{ vars.HCLOUD_SSH_KEY_NAME }}
+          TF_VAR_docker_image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          AWS_ENDPOINT_URL_S3: ${{ vars.HETZNER_OBJECT_STORAGE_ENDPOINT }}
+          AWS_SKIP_REQUESTING_ACCOUNT_ID: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_STS_REGIONAL_ENDPOINTS: "legacy"
