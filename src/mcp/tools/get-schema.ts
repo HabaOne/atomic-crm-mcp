@@ -55,7 +55,8 @@ async function getSchemaData(
 
     // Group columns by table and track table types
     const tables: Record<string, { columns: any[]; tableType: string }> = {};
-    for (const row of columnsResult.data || []) {
+    const columnsData = columnsResult.data as any[] | undefined;
+    for (const row of columnsData || []) {
       if (!tables[row.table_name]) {
         tables[row.table_name] = {
           columns: [],
@@ -72,8 +73,9 @@ async function getSchemaData(
 
     // Group foreign keys by table
     const foreignKeys: Record<string, any[]> = {};
-    if (foreignKeysResult.success && foreignKeysResult.data) {
-      for (const row of foreignKeysResult.data) {
+    const fkData = foreignKeysResult.data as any[] | undefined;
+    if (foreignKeysResult.success && fkData) {
+      for (const row of fkData) {
         if (!foreignKeys[row.table_name]) {
           foreignKeys[row.table_name] = [];
         }

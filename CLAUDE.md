@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guide for Claude Code when working with this MCP server codebase.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Commands
 
@@ -45,3 +45,11 @@ src/auth/               # JWT validation + OAuth metadata
 SUPABASE_URL=https://xxx.supabase.co  # For JWKS (auth)
 DATABASE_URL=postgresql://...          # Direct connection (data)
 ```
+
+## Adding New MCP Tools
+
+1. Create file in `src/mcp/tools/` exporting `{ definition, handler }`
+2. Definition uses Zod schema for `inputSchema`
+3. Handler receives `(params, context: McpContext)` where context has `authInfo` and `userToken`
+4. Add export to `src/mcp/server.ts` tool registration object
+5. Use `executeQuery()` from `query.ts` to run SQL with RLS enforcement

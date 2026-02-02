@@ -1,9 +1,10 @@
-import { jwtVerify, createRemoteJWKSet, type JWTPayload } from 'jose';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { config } from '../config.js';
 
 const JWKS = createRemoteJWKSet(new URL(config.supabase.jwksUrl));
 
 export interface AuthInfo {
+  type: 'jwt';
   userId: string;
   role?: string;
   clientId?: string;
@@ -20,6 +21,7 @@ export async function validateJWT(token: string): Promise<AuthInfo> {
     }
 
     return {
+      type: 'jwt',
       userId: payload.sub,
       role: payload.role as string | undefined,
       clientId: payload.client_id as string | undefined,

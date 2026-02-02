@@ -11,24 +11,30 @@ const pool = new Pool({
   connectionString: config.databaseUrl,
 });
 
+async function setSessionVariables(
+  client: pg.PoolClient,
+  userToken: string
+): Promise<void> {
+  await client.query(`SET LOCAL role = 'authenticated'`);
+
+  const jwtClaims = decodeJwt(userToken);
+  const claimsJson = JSON.stringify(jwtClaims).replace(/'/g, "''");
+  await client.query(`SET LOCAL request.jwt.claims = '${claimsJson}'`);
+}
+
 export async function executeQuery(
   sql: string,
   authInfo: AuthInfo,
   userToken: string
-): Promise<{ success: boolean; data?: any; error?: string }> {
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
   let client;
 
   try {
     client = await pool.connect();
-    const jwtClaims = decodeJwt(userToken);
 
     await client.query("BEGIN");
 
-    await client.query(`SET LOCAL role = 'authenticated'`);
-
-    // SET commands don't support parameterized queries, so we need to escape and embed the JSON
-    const claimsJson = JSON.stringify(jwtClaims).replace(/'/g, "''");
-    await client.query(`SET LOCAL request.jwt.claims = '${claimsJson}'`);
+    await setSessionVariables(client, userToken);
 
     const result = await client.query(sql);
 
@@ -49,7 +55,6 @@ export async function executeQuery(
       }
     }
 
-    // Handle AggregateError which has multiple errors
     let errorMessage: string;
     if (error instanceof AggregateError && error.errors.length > 0) {
       errorMessage = error.errors
