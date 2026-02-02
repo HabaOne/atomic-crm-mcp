@@ -328,10 +328,18 @@ jobs:
 
           echo ".env file created and copied to staging server"
 
+          echo "Waiting for Docker to be available (cloud-init may still be running)..."
+          for i in {1..60}; do
+            if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP "docker compose version" 2>/dev/null; then
+              echo "Docker Compose is ready"
+              break
+            fi
+            echo "Waiting for Docker... ($i/60)"
+            sleep 10
+          done
+
           echo "Authenticating with GitHub Container Registry..."
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << EOF
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin || true
-          EOF
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin" || true
 
           echo "Pulling staging images and starting containers..."
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << 'REMOTEEOF'
