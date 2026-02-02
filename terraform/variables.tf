@@ -29,9 +29,9 @@ variable "network_zone" {
 }
 
 variable "server_type" {
-  description = "Server type (cx22, cx32, etc.)"
+  description = "Server type (ccx13, cx32, etc.)"
   type        = string
-  default     = "cx22"
+  default     = "ccx13"
 }
 
 variable "server_image" {

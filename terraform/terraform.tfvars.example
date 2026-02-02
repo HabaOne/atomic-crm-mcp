@@ -8,7 +8,7 @@ ssh_key_name = "your-ssh-key-name"
 # Optional (with defaults)
 environment        = "dev"
 location           = "nbg1"
-server_type        = "cx22"
+server_type        = "ccx13"
 load_balancer_type = "lb11"
 
 # SSL Certificate (leave empty for HTTP-only)
